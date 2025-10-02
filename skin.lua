@@ -1,185 +1,328 @@
---== Avatar + Accessory Copier (LocalScript) ==--
--- Usage: host raw and run with loadstring(game:HttpGet("RAW_URL"))()
--- Put/run this as a LocalScript (StarterGui or loaded via executor)
+-- Avatar + Accessory Copier with polished UI
+-- LocalScript: letakkan di StarterGui atau jalankan via loadstring(game:HttpGet("RAW_URL"))()
+-- Fitur: draggable titlebar, minimize, close, rapi & modern UI, copy avatar + accessories (from luar server)
 
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 if not LocalPlayer then
-    warn("Script must run in a client (LocalScript) context.")
+    warn("Script harus dijalankan sebagai LocalScript (client).")
     return
 end
 
--- UI builder (expanded with toggles)
+-- Safely remove old GUI if present
+if LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("MoziIHub_AvatarCopier") then
+    LocalPlayer.PlayerGui.MoziIHub_AvatarCopier:Destroy()
+end
+
 local function createUI()
     local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "AvatarCopierUI"
-    screenGui.ResetOnSpawn = false
+    screenGui.Name = "MoziIHub_AvatarCopier"
+    screenGui.DisplayOrder = 1000
+    screenGui.IgnoreGuiInset = true
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 
-    local frame = Instance.new("Frame", screenGui)
-    frame.Name = "MainFrame"
-    frame.Size = UDim2.new(0, 420, 0, 190)
-    frame.Position = UDim2.new(0.5, -210, 0.12, 0)
-    frame.AnchorPoint = Vector2.new(0.5, 0)
-    frame.BackgroundTransparency = 0.12
-    frame.BackgroundColor3 = Color3.fromRGB(24,24,24)
-    frame.BorderSizePixel = 0
-    local uiCorner = Instance.new("UICorner", frame); uiCorner.CornerRadius = UDim.new(0, 10)
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 460, 0, 220)
+    mainFrame.Position = UDim2.new(0.5, -230, 0.12, 0)
+    mainFrame.AnchorPoint = Vector2.new(0.5, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(14, 17, 23)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = screenGui
 
-    local title = Instance.new("TextLabel", frame)
-    title.Size = UDim2.new(1, -20, 0, 30)
-    title.Position = UDim2.new(0, 10, 0, 10)
-    title.Text = "Avatar & Accessory Copier"
-    title.Font = Enum.Font.SourceSansBold
-    title.TextSize = 20
-    title.TextColor3 = Color3.fromRGB(255,255,255)
-    title.BackgroundTransparency = 1
-    title.TextXAlignment = Enum.TextXAlignment.Left
+    local frameCorner = Instance.new("UICorner")
+    frameCorner.CornerRadius = UDim.new(0, 12)
+    frameCorner.Parent = mainFrame
 
-    local inputBox = Instance.new("TextBox", frame)
-    inputBox.Size = UDim2.new(1, -20, 0, 36)
-    inputBox.Position = UDim2.new(0, 10, 0, 48)
-    inputBox.PlaceholderText = "Masukkan username / profile link / userId"
-    inputBox.Text = ""
-    inputBox.Font = Enum.Font.SourceSans
-    inputBox.TextSize = 18
-    inputBox.ClearTextOnFocus = false
-    inputBox.BackgroundTransparency = 0.15
-    inputBox.BackgroundColor3 = Color3.fromRGB(16,16,16)
-    inputBox.TextColor3 = Color3.fromRGB(240,240,240)
-    inputBox.TextXAlignment = Enum.TextXAlignment.Left
+    -- subtle outline
+    local frameStroke = Instance.new("UIStroke")
+    frameStroke.Color = Color3.fromRGB(40, 40, 45)
+    frameStroke.Transparency = 0
+    frameStroke.Parent = mainFrame
 
-    local copyBtn = Instance.new("TextButton", frame)
-    copyBtn.Size = UDim2.new(0, 150, 0, 36)
-    copyBtn.Position = UDim2.new(0, 10, 0, 96)
-    copyBtn.Text = "Copy Avatar"
-    copyBtn.Font = Enum.Font.SourceSansBold
-    copyBtn.TextSize = 18
-    copyBtn.BackgroundColor3 = Color3.fromRGB(40, 120, 220)
-    copyBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    local btnCorner = Instance.new("UICorner", copyBtn)
+    -- Title bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Name = "TitleBar"
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.BackgroundTransparency = 1
+    titleBar.Parent = mainFrame
 
-    local status = Instance.new("TextLabel", frame)
-    status.Size = UDim2.new(1, -180, 0, 36)
-    status.Position = UDim2.new(0, 170, 0, 96)
-    status.Text = "Ready"
-    status.Font = Enum.Font.SourceSans
-    status.TextSize = 16
-    status.TextColor3 = Color3.fromRGB(200,200,200)
-    status.BackgroundTransparency = 1
-    status.TextXAlignment = Enum.TextXAlignment.Left
+    local titleText = Instance.new("TextLabel")
+    titleText.Name = "Title"
+    titleText.Text = "Avatar & Accessory Copier"
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextSize = 16
+    titleText.TextColor3 = Color3.fromRGB(240,240,240)
+    titleText.BackgroundTransparency = 1
+    titleText.Size = UDim2.new(0.7, -12, 1, 0)
+    titleText.Position = UDim2.new(0, 12, 0, 0)
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.Parent = titleBar
 
-    -- Toggles: Copy Accessories, Clear existing accessories, Mode
-    local function makeToggle(labelText, posX, posY)
-        local lbl = Instance.new("TextLabel", frame)
-        lbl.Size = UDim2.new(0, 180, 0, 20)
-        lbl.Position = UDim2.new(0, posX, 0, posY)
-        lbl.Text = labelText
-        lbl.Font = Enum.Font.SourceSans
-        lbl.TextSize = 14
-        lbl.TextColor3 = Color3.fromRGB(220,220,220)
-        lbl.BackgroundTransparency = 1
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
+    -- small subtitle
+    local subText = Instance.new("TextLabel")
+    subText.Name = "Sub"
+    subText.Text = "copy humanoid description & accessories — works with users outside the map"
+    subText.Font = Enum.Font.Gotham
+    subText.TextSize = 12
+    subText.TextColor3 = Color3.fromRGB(170,170,180)
+    subText.BackgroundTransparency = 1
+    subText.Size = UDim2.new(0.9, -12, 0, 16)
+    subText.Position = UDim2.new(0, 12, 1, -18)
+    subText.TextXAlignment = Enum.TextXAlignment.Left
+    subText.Parent = titleBar
 
-        local btn = Instance.new("TextButton", frame)
-        btn.Size = UDim2.new(0, 60, 0, 20)
-        btn.Position = UDim2.new(0, posX + 190, 0, posY)
-        btn.Text = "ON"
-        btn.Font = Enum.Font.SourceSansBold
-        btn.TextSize = 14
-        btn.BackgroundColor3 = Color3.fromRGB(30,150,50)
-        btn.TextColor3 = Color3.fromRGB(255,255,255)
-        local corner = Instance.new("UICorner", btn)
-        return lbl, btn
+    -- Right-side action buttons (minimize & close)
+    local function makeTitleButton(symbol, name)
+        local btn = Instance.new("TextButton")
+        btn.Name = name
+        btn.Size = UDim2.new(0, 34, 0, 24)
+        btn.AnchorPoint = Vector2.new(1, 0.5)
+        btn.Position = UDim2.new(1, -8 - ((name == "Close") and 0 or 40), 0.5, 0)
+        btn.BackgroundTransparency = 0.12
+        btn.BackgroundColor3 = Color3.fromRGB(36, 39, 46)
+        btn.Text = symbol
+        btn.Font = Enum.Font.GothamSemibold
+        btn.TextSize = 18
+        btn.TextColor3 = Color3.fromRGB(230,230,230)
+        btn.Parent = titleBar
+        local corner = Instance.new("UICorner", btn); corner.CornerRadius = UDim.new(0,6)
+        local stroke = Instance.new("UIStroke", btn); stroke.Color = Color3.fromRGB(28,28,30); stroke.Transparency = 0.5
+        return btn
     end
 
-    local lbl1, toggleAccessories = makeToggle("Copy Accessories", 10, 140)
-    local lbl2, toggleClear = makeToggle("Clear Current Accessories", 220, 140)
+    local minimizeBtn = makeTitleButton("—", "Minimize")
+    local closeBtn = makeTitleButton("✕", "Close")
 
-    -- Mode dropdown-ish (simple button cycle)
-    local modeLabel = Instance.new("TextLabel", frame)
-    modeLabel.Size = UDim2.new(0, 200, 0, 18)
-    modeLabel.Position = UDim2.new(0, 10, 0, 73)
+    -- Content container
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.BackgroundTransparency = 0
+    content.BackgroundColor3 = Color3.fromRGB(20, 24, 30)
+    content.BorderSizePixel = 0
+    content.Size = UDim2.new(1, -24, 1, -56)
+    content.Position = UDim2.new(0, 12, 0, 44)
+    content.Parent = mainFrame
+    local contentCorner = Instance.new("UICorner", content); contentCorner.CornerRadius = UDim.new(0,10)
+
+    -- Layout inside content
+    local layout = Instance.new("UIListLayout", content)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0,10)
+
+    -- Top row: Input + Copy Button
+    local topRow = Instance.new("Frame")
+    topRow.Size = UDim2.new(1, 0, 0, 48)
+    topRow.BackgroundTransparency = 1
+    topRow.LayoutOrder = 1
+    topRow.Parent = content
+
+    local inputBox = Instance.new("TextBox")
+    inputBox.Name = "Input"
+    inputBox.PlaceholderText = "username OR profile link OR userId"
+    inputBox.Font = Enum.Font.Gotham
+    inputBox.TextSize = 16
+    inputBox.ClearTextOnFocus = false
+    inputBox.BackgroundColor3 = Color3.fromRGB(14,17,22)
+    inputBox.Size = UDim2.new(0.66, 0, 1, 0)
+    inputBox.Position = UDim2.new(0,0,0,0)
+    inputBox.TextColor3 = Color3.fromRGB(230,230,230)
+    inputBox.Parent = topRow
+    local inpCorner = Instance.new("UICorner", inputBox); inpCorner.CornerRadius = UDim.new(0,8)
+    local inpStroke = Instance.new("UIStroke", inputBox); inpStroke.Color = Color3.fromRGB(36,36,40); inpStroke.Transparency = 0.6
+
+    local copyBtn = Instance.new("TextButton")
+    copyBtn.Name = "CopyBtn"
+    copyBtn.Text = "Copy Avatar"
+    copyBtn.Font = Enum.Font.GothamBold
+    copyBtn.TextSize = 16
+    copyBtn.Size = UDim2.new(0.32, -8, 1, 0)
+    copyBtn.Position = UDim2.new(0.68, 8, 0, 0)
+    copyBtn.BackgroundColor3 = Color3.fromRGB(42, 120, 217)
+    copyBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    copyBtn.Parent = topRow
+    local copyCorner = Instance.new("UICorner", copyBtn); copyCorner.CornerRadius = UDim.new(0,8)
+
+    -- Middle row: toggles
+    local midRow = Instance.new("Frame")
+    midRow.Size = UDim2.new(1, 0, 0, 56)
+    midRow.BackgroundTransparency = 1
+    midRow.LayoutOrder = 2
+    midRow.Parent = content
+
+    local function makeToggle(parent, x, y, labelText, initial)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(0.5, -8, 1, 0)
+        container.Position = UDim2.new(x, 0, y, 0)
+        container.BackgroundTransparency = 1
+        container.Parent = parent
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0.68, 0, 1, 0)
+        lbl.Position = UDim2.new(0,0,0,0)
+        lbl.BackgroundTransparency = 1
+        lbl.Font = Enum.Font.Gotham
+        lbl.Text = labelText
+        lbl.TextSize = 14
+        lbl.TextColor3 = Color3.fromRGB(220,220,220)
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = container
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0.28, 0, 0.62, 0)
+        btn.Position = UDim2.new(0.72, -4, 0.19, 0)
+        btn.BackgroundColor3 = initial and Color3.fromRGB(34,170,92) or Color3.fromRGB(120,32,32)
+        btn.Text = initial and "ON" or "OFF"
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 13
+        btn.TextColor3 = Color3.fromRGB(240,240,240)
+        btn.Parent = container
+        local corner = Instance.new("UICorner", btn); corner.CornerRadius = UDim.new(0,6)
+
+        return {Label = lbl, Button = btn}
+    end
+
+    local t1 = makeToggle(midRow, 0, 0, "Copy Accessories", true)
+    local t2 = makeToggle(midRow, 0.5, 0, "Clear Current Accessories", true)
+
+    -- Mode selector
+    local modeRow = Instance.new("Frame")
+    modeRow.Size = UDim2.new(1,0,0,34)
+    modeRow.BackgroundTransparency = 1
+    modeRow.LayoutOrder = 3
+    modeRow.Parent = content
+
+    local modeLabel = Instance.new("TextLabel")
+    modeLabel.Size = UDim2.new(0.6,0,1,0)
+    modeLabel.Position = UDim2.new(0,0,0,0)
+    modeLabel.BackgroundTransparency = 1
+    modeLabel.Font = Enum.Font.Gotham
     modeLabel.Text = "Mode: Full Avatar"
-    modeLabel.Font = Enum.Font.SourceSans
     modeLabel.TextSize = 14
     modeLabel.TextColor3 = Color3.fromRGB(200,200,200)
-    modeLabel.BackgroundTransparency = 1
-    modeLabel.TextXAlignment = Enum.TextXAlignment.Right
+    modeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    modeLabel.Parent = modeRow
 
-    -- initial states
-    local state = {
-        copyAccessories = true,
-        clearAccessories = true,
-        mode = "Full", -- "Full" or "AccessoriesOnly"
-    }
-
-    toggleAccessories.MouseButton1Click:Connect(function()
-        state.copyAccessories = not state.copyAccessories
-        toggleAccessories.Text = state.copyAccessories and "ON" or "OFF"
-        toggleAccessories.BackgroundColor3 = state.copyAccessories and Color3.fromRGB(30,150,50) or Color3.fromRGB(140,30,30)
-    end)
-    toggleClear.MouseButton1Click:Connect(function()
-        state.clearAccessories = not state.clearAccessories
-        toggleClear.Text = state.clearAccessories and "ON" or "OFF"
-        toggleClear.BackgroundColor3 = state.clearAccessories and Color3.fromRGB(30,150,50) or Color3.fromRGB(140,30,30)
-    end)
-
-    -- mode toggle (small button on title)
-    local modeBtn = Instance.new("TextButton", frame)
-    modeBtn.Size = UDim2.new(0, 110, 0, 20)
-    modeBtn.Position = UDim2.new(1, -120, 0, 12)
-    modeBtn.AnchorPoint = Vector2.new(1, 0)
-    modeBtn.Text = "Mode: Full"
-    modeBtn.Font = Enum.Font.SourceSans
+    local modeBtn = Instance.new("TextButton")
+    modeBtn.Size = UDim2.new(0.36,0,1,0)
+    modeBtn.Position = UDim2.new(0.64,0,0,0)
+    modeBtn.Text = "Toggle Mode"
+    modeBtn.Font = Enum.Font.GothamBold
     modeBtn.TextSize = 14
-    modeBtn.BackgroundTransparency = 0.15
-    modeBtn.TextColor3 = Color3.fromRGB(220,220,220)
-    local mbCorner = Instance.new("UICorner", modeBtn)
-    modeBtn.MouseButton1Click:Connect(function()
-        if state.mode == "Full" then
-            state.mode = "AccessoriesOnly"
-            modeBtn.Text = "Mode: Accessories"
-        else
-            state.mode = "Full"
-            modeBtn.Text = "Mode: Full"
-        end
-    end)
+    modeBtn.BackgroundColor3 = Color3.fromRGB(60,60,66)
+    modeBtn.TextColor3 = Color3.fromRGB(240,240,240)
+    modeBtn.Parent = modeRow
+    local modeCorner = Instance.new("UICorner", modeBtn); modeCorner.CornerRadius = UDim.new(0,8)
 
+    -- Status row
+    local statusRow = Instance.new("Frame")
+    statusRow.Size = UDim2.new(1,0,0,36)
+    statusRow.BackgroundTransparency = 1
+    statusRow.LayoutOrder = 4
+    statusRow.Parent = content
+
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1,0,1,0)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.Text = "Ready"
+    statusLabel.TextSize = 14
+    statusLabel.TextColor3 = Color3.fromRGB(190,190,190)
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Parent = statusRow
+
+    -- Small hint
+    local hintLabel = Instance.new("TextLabel")
+    hintLabel.Size = UDim2.new(1,0,0,18)
+    hintLabel.BackgroundTransparency = 1
+    hintLabel.LayoutOrder = 5
+    hintLabel.Font = Enum.Font.Gotham
+    hintLabel.TextSize = 12
+    hintLabel.TextColor3 = Color3.fromRGB(150,150,160)
+    hintLabel.Text = 'Usage: username OR "https://www.roblox.com/users/123/profile" OR id'
+    hintLabel.Parent = content
+
+    -- Attach everything
     screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    -- Return references for logic
     return {
         ScreenGui = screenGui,
+        MainFrame = mainFrame,
+        TitleBar = titleBar,
+        Minimize = minimizeBtn,
+        Close = closeBtn,
+        Content = content,
         Input = inputBox,
-        Button = copyBtn,
-        Status = status,
-        State = state
+        CopyBtn = copyBtn,
+        Toggle_CopyAccessories = t1.Button,
+        Toggle_ClearAccessories = t2.Button,
+        ModeBtn = modeBtn,
+        ModeLabel = modeLabel,
+        StatusLabel = statusLabel,
     }
 end
 
--- Parse input like previous script
+-- Helper: draggable titlebar
+local function makeDraggable(frame, dragGui)
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    local function update(input)
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+
+    dragGui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    dragGui.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
+end
+
+-- Parsing input
 local function parseInputToUserId(input)
-    input = tostring(input):gsub("^%s*(.-)%s*$", "%1")
+    input = tostring(input or ""):gsub("^%s*(.-)%s*$", "%1")
     if input == "" then return nil, "Input kosong" end
     local maybeId = tonumber(input)
     if maybeId then return maybeId, nil end
     local digits = input:match("(%d+)")
     if digits then return tonumber(digits), nil end
     local ok, res = pcall(function() return Players:GetUserIdFromNameAsync(input) end)
-    if ok and type(res) == "number" then return res, nil
-    else return nil, ("Gagal menemukan userId untuk username '%s'"):format(input) end
+    if ok and type(res) == "number" then return res, nil end
+    return nil, ("Gagal menemukan userId untuk username '%s'"):format(input)
 end
 
--- Remove accessory instances from a character
+-- Accessories helper
 local function clearAccessoriesFromCharacter(character)
     if not character then return end
-    for _, child in ipairs(character:GetChildren()) do
-        if child:IsA("Accessory") then
-            child:Destroy()
-        end
+    for _, c in ipairs(character:GetChildren()) do
+        if c:IsA("Accessory") then c:Destroy() end
     end
 end
 
--- Add accessories from a model (result of GetCharacterAppearanceAsync) to target humanoid
 local function addAccessoriesFromModelToHumanoid(model, targetHumanoid)
     if not model or not targetHumanoid then return false, "Model atau humanoid invalid" end
     local added = 0
@@ -187,21 +330,14 @@ local function addAccessoriesFromModelToHumanoid(model, targetHumanoid)
         if obj:IsA("Accessory") then
             local ok, err = pcall(function()
                 local clone = obj:Clone()
-                -- Humanoid:AddAccessory expects Accessory instance (it will parent to character)
                 targetHumanoid:AddAccessory(clone)
             end)
-            if ok then
-                added = added + 1
-            else
-                -- ignore failed accessory adds but keep trying others
-                -- print("Accessory add failed:", err)
-            end
+            if ok then added = added + 1 end
         end
     end
     return true, ("Accessories added: %d"):format(added)
 end
 
--- Apply humanoid description (body/shirt/pants/etc)
 local function applyHumanoidDescription(desc)
     if not desc then return false, "HumanoidDescription kosong" end
     local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -212,83 +348,130 @@ local function applyHumanoidDescription(desc)
     return true, "HumanoidDescription diterapkan"
 end
 
--- Main copy function combining description + accessories
-local function copyAvatarAndAccessories(input, ui)
-    ui.Status.Text = "Memproses input..."
-    local userId, perr = parseInputToUserId(input)
-    if not userId then ui.Status.Text = "Error: "..(perr or "invalid input"); return end
+-- Main copy logic
+local function copyAvatarAndAccessories(userInput, uiRefs)
+    uiRefs.StatusLabel.Text = "Memproses..."
+    local userId, perr = parseInputToUserId(userInput)
+    if not userId then uiRefs.StatusLabel.Text = "Error: "..(perr or "invalid input"); return end
 
     local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then ui.Status.Text = "Error: Humanoid lokal tidak ditemukan"; return end
+    if not humanoid then uiRefs.StatusLabel.Text = "Error: Humanoid lokal tidak ditemukan"; return end
 
-    local state = ui.State
+    local copyAccessories = (uiRefs.Toggle_CopyAccessories.Text == "ON")
+    local clearAccessories = (uiRefs.Toggle_ClearAccessories.Text == "ON")
+    local modeFull = (uiRefs.ModeLabel.Text:match("Full"))
 
-    -- If mode Full or AccessoriesOnly logic
-    if state.mode == "Full" then
-        ui.Status.Text = "Mengambil HumanoidDescription..."
+    if modeFull then
+        uiRefs.StatusLabel.Text = "Mengambil HumanoidDescription..."
         local okDesc, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserId(userId) end)
-        if okDesc and desc and state.copyAccessories then
-            -- apply description first (so body/shirts set), then accessories add
+        if okDesc and desc then
             local applied, msg = applyHumanoidDescription(desc)
-            if applied then
-                ui.Status.Text = "HumanoidDescription diterapkan. Mengambil accessories..."
-            else
-                ui.Status.Text = "Warning: "..tostring(msg).." - akan tetap mencoba ambil accessories."
-            end
-        elseif okDesc and desc then
-            local applied, msg = applyHumanoidDescription(desc)
-            ui.Status.Text = applied and "HumanoidDescription diterapkan." or ("Gagal apply: "..tostring(msg))
-            -- if accessories not requested, return
-            if not state.copyAccessories then return end
+            uiRefs.StatusLabel.Text = applied and "HumanoidDescription diterapkan." or ("Warning: "..tostring(msg))
         else
-            ui.Status.Text = "Gagal mendapatkan HumanoidDescription; tetap mencoba ambil accessories..."
+            uiRefs.StatusLabel.Text = "Gagal mengambil HumanoidDescription; melanjutkan ke accessories..."
         end
     end
 
-    if state.copyAccessories then
-        ui.Status.Text = "Mengambil appearance + accessories dari server..."
+    if copyAccessories then
+        uiRefs.StatusLabel.Text = "Mengambil appearance & accessories..."
         local okModel, modelOrErr = pcall(function() return Players:GetCharacterAppearanceAsync(userId) end)
         if not okModel or not modelOrErr then
-            ui.Status.Text = "Gagal mendapatkan appearance: "..tostring(modelOrErr)
+            uiRefs.StatusLabel.Text = "Gagal mendapatkan appearance: "..tostring(modelOrErr)
             return
         end
 
-        -- Optionally clear existing accessories
-        if state.clearAccessories then
-            ui.Status.Text = "Menghapus accessories lokal..."
+        if clearAccessories then
+            uiRefs.StatusLabel.Text = "Menghapus accessories lokal..."
             pcall(function() clearAccessoriesFromCharacter(character) end)
         end
 
-        ui.Status.Text = "Menambahkan accessories ke karakter..."
-        local okAdd, addMsg = pcall(function()
-            return addAccessoriesFromModelToHumanoid(modelOrErr, humanoid)
-        end)
-        if okAdd then
-            ui.Status.Text = "Selesai: "..tostring(addMsg)
-        else
-            ui.Status.Text = "Gagal menambahkan accessories: "..tostring(addMsg)
-        end
+        uiRefs.StatusLabel.Text = "Menambahkan accessories ke karakter..."
+        local okAdd, addMsg = pcall(function() return addAccessoriesFromModelToHumanoid(modelOrErr, humanoid) end)
+        if okAdd then uiRefs.StatusLabel.Text = "Selesai: "..tostring(addMsg)
+        else uiRefs.StatusLabel.Text = "Gagal menambahkan accessories: "..tostring(addMsg) end
     else
-        ui.Status.Text = "Selesai (Accessories di-skip)."
+        if not modeFull then
+            uiRefs.StatusLabel.Text = "Mode AccessoriesOnly tapi Copy Accessories OFF — tidak ada yang dilakukan."
+        else
+            uiRefs.StatusLabel.Text = "Selesai (accessories di-skip)."
+        end
     end
 end
 
--- Setup UI and bind
+-- Build UI and wire interactions
 local ui = createUI()
-ui.Button.MouseButton1Click:Connect(function()
-    ui.Button.AutoButtonColor = false
-    ui.Button.Text = "Processing..."
-    ui.Button.Active = false
+
+-- Make draggable
+makeDraggable(ui.MainFrame, ui.TitleBar)
+
+-- Minimize behavior using tween
+local minimized = false
+local content = ui.Content
+local fullSize = ui.MainFrame.Size
+local tweenInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+ui.Minimize.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        ui.Minimize.Text = "+"
+        local t = TweenService:Create(content, tweenInfo, {Size = UDim2.new(1, -24, 0, 0)})
+        t:Play()
+        ui.MainFrame.Size = UDim2.new(ui.MainFrame.Size.X.Scale, ui.MainFrame.Size.X.Offset, 0, 64)
+    else
+        ui.Minimize.Text = "—"
+        local t = TweenService:Create(content, tweenInfo, {Size = UDim2.new(1, -24, 1, -56)})
+        t:Play()
+        ui.MainFrame.Size = fullSize
+    end
+end)
+
+ui.Close.MouseButton1Click:Connect(function()
+    if ui.ScreenGui and ui.ScreenGui.Parent then ui.ScreenGui:Destroy() end
+end)
+
+-- Toggle buttons logic
+local function flipToggle(btn)
+    local isOn = (btn.Text == "ON")
+    if isOn then
+        btn.Text = "OFF"
+        btn.BackgroundColor3 = Color3.fromRGB(120,32,32)
+    else
+        btn.Text = "ON"
+        btn.BackgroundColor3 = Color3.fromRGB(34,170,92)
+    end
+end
+
+ui.Toggle_CopyAccessories.MouseButton1Click:Connect(function() flipToggle(ui.Toggle_CopyAccessories) end)
+ui.Toggle_ClearAccessories.MouseButton1Click:Connect(function() flipToggle(ui.Toggle_ClearAccessories) end)
+
+-- Mode toggle
+ui.ModeBtn.MouseButton1Click:Connect(function()
+    if ui.ModeLabel.Text:match("Full") then
+        ui.ModeLabel.Text = "Mode: Accessories Only"
+    else
+        ui.ModeLabel.Text = "Mode: Full Avatar"
+    end
+end)
+
+-- Copy button action
+ui.CopyBtn.MouseButton1Click:Connect(function()
+    ui.CopyBtn.Active = false
+    local prevText = ui.CopyBtn.Text
+    ui.CopyBtn.Text = "Processing..."
     local ok, err = pcall(function()
         copyAvatarAndAccessories(ui.Input.Text, ui)
     end)
-    if not ok then
-        ui.Status.Text = "Terjadi error: "..tostring(err)
-    end
-    ui.Button.Text = "Copy Avatar"
-    ui.Button.AutoButtonColor = true
-    ui.Button.Active = true
+    if not ok then ui.StatusLabel.Text = "Terjadi error: "..tostring(err) end
+    ui.CopyBtn.Text = prevText
+    ui.CopyBtn.Active = true
 end)
+
+-- Auto-apply on respawn option: optional (commented - user can enable)
+--[=[
+LocalPlayer.CharacterAdded:Connect(function()
+    -- Optionally re-apply last copied avatar here
+end)
+]=]
 
 -- End of script
